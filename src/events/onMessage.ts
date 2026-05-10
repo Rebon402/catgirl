@@ -12,6 +12,12 @@ export const onMessage = async (bot: ExtendedClient, message: Message) => {
     if (message.author.bot || !message.content || !message.guild) {
       return;
     }
+    if (
+      bot.config.filterChannelId &&
+      message.channel.id !== bot.config.filterChannelId
+    ) {
+      return;
+    }
 
     const triggeredWarnings: EmbedBuilder[] = [];
     const cleaned = stripSpecialCharacters(message.content);
@@ -23,12 +29,18 @@ export const onMessage = async (bot: ExtendedClient, message: Message) => {
     );
 
     triggeredWarnings.map((warning) =>
-      warning.setColor('#2B2D31').addFields([
-        {
-          name: 'TIP: ',
-          value: 'Please edit your message so I will poof away!',
-        },
-      ]),
+      warning
+        .setColor('#2B2D31')
+        .setDescription(
+          `Thats bad. Please be mindful in <#${message.channel.id}> and be more respectful.`,
+        )
+        .addFields([
+          {
+            name: 'TIP: ',
+            value:
+              'please edit or delete the above word(s) in your message then i will leave',
+          },
+        ]),
     );
 
     if (!triggeredWarnings.length) {

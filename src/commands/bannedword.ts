@@ -6,6 +6,18 @@ import {
 } from "discord.js";
 import { Command } from "../interfaces/Command";
 
+interface AlexConfig {
+	allow: Array<string>;
+	profanitySureness: 0 | 1 | 2;
+	noBinary: boolean;
+}
+
+const createDefaultAlexConfig = (): AlexConfig => ({
+	allow: [],
+	profanitySureness: 1,
+	noBinary: false,
+});
+
 const addSubCommand = () => {
 	return new SlashCommandSubcommandBuilder()
 		.setName("add")
@@ -51,6 +63,11 @@ export const bannedword: Command = {
 		.addSubcommand(clearSubCommand)
 		.addSubcommand(deleteSubCommand),
 	run: async (bot, interaction) => {
+		if (!interaction.guildId) {
+			await interaction.reply("This command can only be used in a server.");
+			return;
+		}
+
 		if (interaction.options.getSubcommand() === "add") {
 			interaction.reply(
 				await addWord(bot, interaction, interaction.options.getString("word")!)
@@ -66,11 +83,9 @@ export const bannedword: Command = {
 		} else if (interaction.options.getSubcommand() === "clear") {
 			interaction.reply(await clearWords(bot, interaction));
 		} else {
-			const query = await ServerConfig.findOne({
-				serverId: interaction.guildId,
-			});
+			const query = await getOrCreateServerConfig(interaction.guildId);
 
-			const bannedWords = query?.bannedWordConfig;
+			const bannedWords = query.bannedWordConfig ?? [];
 
 			interaction.reply(`\`\`\`\n${bannedWords}\n\`\`\``);
 		}
@@ -84,19 +99,28 @@ async function clearWords(
 	bot: ExtendedClient,
 	interaction: CommandInteraction
 ) {
+	const guildId = interaction.guildId as string;
+	const guildQuery = await getOrCreateServerConfig(guildId);
+
 	const updated = await ServerConfig.findOneAndUpdate(
 		{
-			serverId: interaction.guildId,
+			serverId: guildId,
 		},
 		{
 			$set: { bannedWordConfig: [] },
 		},
 		{ new: true }
 	);
+	if (!updated) {
+		return "Could not update banned list. Please try again.";
+	}
 
-	const cache = bot.cache[interaction.guildId as string];
-	bot.cache[interaction.guildId as string] = {
-		alexConfig: cache.alexConfig,
+	const cache = bot.cache[guildId];
+	bot.cache[guildId] = {
+		alexConfig:
+			(cache?.alexConfig as AlexConfig) ??
+			(guildQuery.alexConfig as AlexConfig) ??
+			createDefaultAlexConfig(),
 		bannedWordConfig: updated!.bannedWordConfig!,
 	};
 
@@ -108,27 +132,32 @@ async function deleteWord(
 	interaction: CommandInteraction,
 	wordToDelete: string
 ) {
-	const guildQuery = await ServerConfig.findOne({
-		serverId: interaction.guildId,
-	});
+	const guildId = interaction.guildId as string;
+	const guildQuery = await getOrCreateServerConfig(guildId);
 
-	const words = guildQuery?.bannedWordConfig as Array<string>;
+	const words = guildQuery.bannedWordConfig as Array<string>;
 
 	const index = words!.indexOf(wordToDelete);
 	if (index !== -1) {
 		const updated = await ServerConfig.findOneAndUpdate(
 			{
-				serverId: interaction.guildId,
+				serverId: guildId,
 			},
 			{
 				$pull: { bannedWordConfig: wordToDelete },
 			},
 			{ new: true }
 		);
+		if (!updated) {
+			return "Could not update banned list. Please try again.";
+		}
 
-		const cache = bot.cache[interaction.guildId as string];
-		bot.cache[interaction.guildId as string] = {
-			alexConfig: cache.alexConfig,
+		const cache = bot.cache[guildId];
+		bot.cache[guildId] = {
+			alexConfig:
+				(cache?.alexConfig as AlexConfig) ??
+				(guildQuery.alexConfig as AlexConfig) ??
+				createDefaultAlexConfig(),
 			bannedWordConfig: updated!.bannedWordConfig!,
 		};
 
@@ -143,26 +172,31 @@ async function addWord(
 	interaction: CommandInteraction,
 	wordToAdd: string
 ) {
-	const guildQuery = await ServerConfig.findOne({
-		serverId: interaction.guildId!,
-	});
+	const guildId = interaction.guildId as string;
+	const guildQuery = await getOrCreateServerConfig(guildId);
 
-	const words = guildQuery?.bannedWordConfig as Array<string>;
+	const words = guildQuery.bannedWordConfig as Array<string>;
 
 	if (!words!.includes(wordToAdd)) {
 		const updated = await ServerConfig.findOneAndUpdate(
 			{
-				serverId: interaction.guildId!,
+				serverId: guildId,
 			},
 			{
 				$push: { bannedWordConfig: wordToAdd },
 			},
 			{ new: true }
 		);
+		if (!updated) {
+			return "Could not update banned list. Please try again.";
+		}
 
-		const cache = bot.cache[interaction.guildId as string];
-		bot.cache[interaction.guildId as string] = {
-			alexConfig: cache.alexConfig,
+		const cache = bot.cache[guildId];
+		bot.cache[guildId] = {
+			alexConfig:
+				(cache?.alexConfig as AlexConfig) ??
+				(guildQuery.alexConfig as AlexConfig) ??
+				createDefaultAlexConfig(),
 			bannedWordConfig: updated!.bannedWordConfig!,
 		};
 
@@ -170,4 +204,17 @@ async function addWord(
 	} else {
 		return `The word "${wordToAdd}" already exists in the banned list.`;
 	}
+}
+
+async function getOrCreateServerConfig(serverId: string) {
+	const existing = await ServerConfig.findOne({ serverId });
+	if (existing) {
+		return existing;
+	}
+
+	return ServerConfig.create({
+		serverId,
+		alexConfig: createDefaultAlexConfig(),
+		bannedWordConfig: [],
+	});
 }

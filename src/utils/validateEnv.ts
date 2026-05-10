@@ -7,10 +7,10 @@ export const validateEnv = (bot: ExtendedClient) => {
     logHandler.log('error', 'Missing "DISCORD_TOKEN" environment variables!');
     process.exit(1);
   }
-  if (!process.env.EDDIEBOT_MONGO_CONNECTION_STRING) {
+  if (!process.env.SQLITE_PATH) {
     logHandler.log(
       'error',
-      'Missing "EDDIEBOT_MONGO_CONNECTION_STRING" environment variables!',
+      'Missing "SQLITE_PATH" environment variables!',
     );
     process.exit(1);
   }
@@ -18,15 +18,17 @@ export const validateEnv = (bot: ExtendedClient) => {
     logHandler.log('error', 'Missing "HOME_GUILD" environment variables!');
     process.exit(1);
   }
+  const filterChannelId = process.env.FILTER_CHANNEL_ID?.trim();
 
   bot.config = {
     token: process.env.DISCORD_TOKEN,
-    dbUri: process.env.EDDIEBOT_MONGO_CONNECTION_STRING,
+    dbPath: process.env.SQLITE_PATH,
     debugHook: process.env.DEBUG_HOOK
       ? new WebhookClient({
           url: process.env.DEBUG_HOOK,
         })
       : undefined,
     homeGuild: process.env.HOME_GUILD,
+    filterChannelId: filterChannelId || undefined,
   };
 };

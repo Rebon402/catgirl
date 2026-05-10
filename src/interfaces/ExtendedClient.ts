@@ -17,8 +17,9 @@ export interface ExtendedClient extends Client {
 	cache: { [key: string]: guildCache };
 	config: {
 		token: string;
-		dbUri: string;
+		dbPath: string;
 		debugHook: WebhookClient | undefined;
 		homeGuild: string;
+		filterChannelId?: string;
 	};
 }

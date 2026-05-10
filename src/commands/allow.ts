@@ -12,6 +12,12 @@ interface AlexConfig {
 	noBinary: boolean;
 }
 
+const createDefaultAlexConfig = (): AlexConfig => ({
+	allow: [],
+	profanitySureness: 1,
+	noBinary: false,
+});
+
 const listSubCommand = () => {
 	return new SlashCommandSubcommandBuilder()
 		.setName("list")
@@ -50,6 +56,11 @@ export const allow: Command = {
 		.addSubcommand(deleteSubCommand)
 		.addSubcommand(listSubCommand),
 	run: async (bot, interaction) => {
+		if (!interaction.guildId) {
+			await interaction.reply("This command can only be used in a server.");
+			return;
+		}
+
 		if (interaction.options.getSubcommand() === "add") {
 			interaction.reply(
 				await addWord(bot, interaction, interaction.options.getString("id")!)
@@ -59,11 +70,9 @@ export const allow: Command = {
 				await deleteWord(bot, interaction, interaction.options.getString("id")!)
 			);
 		} else {
-			const query = await ServerConfig.findOne({
-				serverId: interaction.guildId,
-			});
+			const query = await getOrCreateServerConfig(interaction.guildId);
 
-			const bannedWords = query?.alexConfig?.allow;
+			const bannedWords = query.alexConfig?.allow ?? [];
 
 			interaction.reply(
 				`see here: <https://github.com/retextjs/retext-equality/blob/main/rules.md>\n\`\`\`\n${bannedWords}\n\`\`\``
@@ -80,28 +89,31 @@ async function deleteWord(
 	interaction: CommandInteraction,
 	wordToDelete: string
 ) {
-	const guildQuery = await ServerConfig.findOne({
-		serverId: interaction.guildId,
-	});
+	const guildId = interaction.guildId as string;
+	const guildQuery = await getOrCreateServerConfig(guildId);
 
-	const words = guildQuery?.alexConfig?.allow;
+	const words = guildQuery.alexConfig?.allow ?? [];
 
 	const index = words!.indexOf(wordToDelete);
 	if (index !== -1) {
 		const updated = await ServerConfig.findOneAndUpdate(
 			{
-				serverId: interaction.guildId,
+				serverId: guildId,
 			},
 			{
 				$pull: { "alexConfig.allow": wordToDelete },
 			},
 			{ new: true }
 		);
+		if (!updated) {
+			return "Could not update allow list. Please try again.";
+		}
 
-		const cache = bot.cache[interaction.guildId as string];
-		bot.cache[interaction.guildId as string] = {
+		const cache = bot.cache[guildId];
+		bot.cache[guildId] = {
 			alexConfig: updated!.alexConfig as AlexConfig,
-			bannedWordConfig: cache.bannedWordConfig!,
+			bannedWordConfig:
+				cache?.bannedWordConfig ?? (guildQuery.bannedWordConfig as Array<string>) ?? [],
 		};
 
 		return `Successfully deleted the word "${wordToDelete}" from the allow list.`;
@@ -115,31 +127,47 @@ async function addWord(
 	interaction: CommandInteraction,
 	wordToAdd: string
 ) {
-	const guildQuery = await ServerConfig.findOne({
-		serverId: interaction.guildId!,
-	});
+	const guildId = interaction.guildId as string;
+	const guildQuery = await getOrCreateServerConfig(guildId);
 
-	const words = guildQuery?.alexConfig?.allow;
+	const words = guildQuery.alexConfig?.allow ?? [];
 
 	if (!words!.includes(wordToAdd)) {
 		const updated = await ServerConfig.findOneAndUpdate(
 			{
-				serverId: interaction.guildId!,
+				serverId: guildId,
 			},
 			{
 				$push: { "alexConfig.allow": wordToAdd },
 			},
 			{ new: true }
 		);
+		if (!updated) {
+			return "Could not update allow list. Please try again.";
+		}
 
-		const cache = bot.cache[interaction.guildId as string];
-		bot.cache[interaction.guildId as string] = {
+		const cache = bot.cache[guildId];
+		bot.cache[guildId] = {
 			alexConfig: updated!.alexConfig as AlexConfig,
-			bannedWordConfig: cache.bannedWordConfig!,
+			bannedWordConfig:
+				cache?.bannedWordConfig ?? (guildQuery.bannedWordConfig as Array<string>) ?? [],
 		};
 
 		return `Successfully added the word "${wordToAdd}" to the allow list.`;
 	} else {
 		return `The word "${wordToAdd}" already exists in the allow list.`;
 	}
+}
+
+async function getOrCreateServerConfig(serverId: string) {
+	const existing = await ServerConfig.findOne({ serverId });
+	if (existing) {
+		return existing;
+	}
+
+	return ServerConfig.create({
+		serverId,
+		alexConfig: createDefaultAlexConfig(),
+		bannedWordConfig: [],
+	});
 }

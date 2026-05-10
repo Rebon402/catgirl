@@ -23,6 +23,16 @@ export const onUpdate = async (
   if (newMessage.author.bot || !newMessage.content || !newMessage.guild) {
     return;
   }
+  const channel = newMessage.channel;
+  if (!channel || !('send' in channel) || !('messages' in channel)) {
+    return;
+  }
+  if (
+    bot.config.filterChannelId &&
+    channel.id !== bot.config.filterChannelId
+  ) {
+    return;
+  }
 
   try {
     const triggeredWarnings: EmbedBuilder[] = [];
@@ -35,29 +45,35 @@ export const onUpdate = async (
     );
 
     triggeredWarnings.map((warning) =>
-      warning.setColor('#2B2D31').addFields([
-        {
-          name: 'TIP: ',
-          value: 'Please edit your message so I will poof away!',
-        },
-      ]),
+      warning
+        .setColor('#2B2D31')
+        .setDescription(
+          `Thats bad. Please be mindful in <#${newMessage.channel.id}> and be more respectful.`,
+        )
+        .addFields([
+          {
+            name: 'TIP: ',
+            value:
+              'please edit or delete the above word(s) in your message then i will leave',
+          },
+        ]),
     );
 
     const savedWarning = await Warnings.findOne({
       serverId: newMessage.guild.id,
       messageId: newMessage.id,
-      channelId: newMessage.channel.id,
+      channelId: channel.id,
     });
 
     // when edit results in new warning, but no existing warning
     if (!savedWarning && triggeredWarnings.length) {
-      const sent = await newMessage.channel.send({
+      const sent = await channel.send({
         embeds: triggeredWarnings.slice(0, 1),
       });
       await Warnings.create({
         serverId: newMessage.guild.id,
         messageId: newMessage.id,
-        channelId: newMessage.channel.id,
+        channelId: channel.id,
         warningId: sent.id,
       });
 
@@ -72,7 +88,7 @@ export const onUpdate = async (
 
     // when edit results in no new warning, but has existing warning, so fixed
     if (savedWarning && !triggeredWarnings.length) {
-      const notificationMessage = await newMessage.channel.messages.fetch(
+      const notificationMessage = await channel.messages.fetch(
         savedWarning.warningId,
       );
       if (notificationMessage) {
@@ -92,7 +108,7 @@ export const onUpdate = async (
 
     // when edit results in new warning AND has existing warning
     if (savedWarning && triggeredWarnings.length) {
-      const notificationMessage = await newMessage.channel.messages.fetch(
+      const notificationMessage = await channel.messages.fetch(
         savedWarning.warningId,
       );
       if (notificationMessage) {
