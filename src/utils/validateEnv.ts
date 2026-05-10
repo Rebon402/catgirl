@@ -19,6 +19,7 @@ export const validateEnv = (bot: ExtendedClient) => {
     process.exit(1);
   }
   const filterChannelId = process.env.FILTER_CHANNEL_ID?.trim();
+  const filterUserId = process.env.FILTER_USER_ID?.trim();
 
   bot.config = {
     token: process.env.DISCORD_TOKEN,
@@ -30,5 +31,6 @@ export const validateEnv = (bot: ExtendedClient) => {
       : undefined,
     homeGuild: process.env.HOME_GUILD,
     filterChannelId: filterChannelId || undefined,
+    filterUserId: filterUserId || undefined,
   };
 };

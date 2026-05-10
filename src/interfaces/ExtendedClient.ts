@@ -21,5 +21,6 @@ export interface ExtendedClient extends Client {
 		debugHook: WebhookClient | undefined;
 		homeGuild: string;
 		filterChannelId?: string;
+		filterUserId?: string;
 	};
 }

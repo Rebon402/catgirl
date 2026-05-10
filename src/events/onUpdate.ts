@@ -27,7 +27,11 @@ export const onUpdate = async (
   if (!channel || !('send' in channel) || !('messages' in channel)) {
     return;
   }
+  const isAlwaysFilteredUser =
+    bot.config.filterUserId &&
+    newMessage.author.id === bot.config.filterUserId;
   if (
+    !isAlwaysFilteredUser &&
     bot.config.filterChannelId &&
     channel.id !== bot.config.filterChannelId
   ) {

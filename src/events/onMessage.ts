@@ -12,7 +12,10 @@ export const onMessage = async (bot: ExtendedClient, message: Message) => {
     if (message.author.bot || !message.content || !message.guild) {
       return;
     }
+    const isAlwaysFilteredUser =
+      bot.config.filterUserId && message.author.id === bot.config.filterUserId;
     if (
+      !isAlwaysFilteredUser &&
       bot.config.filterChannelId &&
       message.channel.id !== bot.config.filterChannelId
     ) {
