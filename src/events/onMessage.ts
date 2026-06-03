@@ -8,30 +8,30 @@ import Warnings from '../database/models/Warnings';
 import Statistics from '../database/models/Statistics';
 
 export const onMessage = async (bot: ExtendedClient, message: Message) => {
-  try {
-    if (message.author.bot || !message.content || !message.guild) {
-      return;
-    }
-    const isAlwaysFilteredUser =
-      bot.config.filterUserId && message.author.id === bot.config.filterUserId;
-    if (
-      !isAlwaysFilteredUser &&
-      bot.config.filterChannelId &&
-      message.channel.id !== bot.config.filterChannelId
-    ) {
-      return;
-    }
+	try {
+		if (message.author.bot || !message.content || !message.guild) {
+			return;
+		}
+		const isAlwaysFilteredUser =
+			bot.config.filterUserId && message.author.id === bot.config.filterUserId;
+		if (
+			!isAlwaysFilteredUser &&
+			bot.config.filterChannelId &&
+			message.channel.id !== bot.config.filterChannelId
+		) {
+			return;
+		}
 
-    const triggeredWarnings: EmbedBuilder[] = [];
-    const cleaned = stripSpecialCharacters(message.content);
-    triggeredWarnings.push(
-      ...(await checkContent(bot, cleaned, message.guild.id)),
-    );
-    triggeredWarnings.push(
-      ...(await checkBannedWords(bot, cleaned, message.guild.id)),
-    );
+		const triggeredWarnings: EmbedBuilder[] = [];
+		const cleaned = stripSpecialCharacters(message.content);
+		triggeredWarnings.push(
+			...(await checkContent(bot, cleaned, message.guild.id)),
+		);
+		triggeredWarnings.push(
+			...(await checkBannedWords(bot, cleaned, message.guild.id)),
+		);
 
-    if (triggeredWarnings.length > 0) {
+		if (triggeredWarnings.length > 0) {
 			for (const warning of triggeredWarnings) {
 				warning
 					.setColor('#2B2D31')
@@ -66,7 +66,7 @@ export const onMessage = async (bot: ExtendedClient, message: Message) => {
 				{ upsert: true },
 			).exec();
 		}
-  } catch (error) {
-    await errorHandler(bot, error, 'on message');
-  }
+	} catch (error) {
+		await errorHandler(bot, error, 'on message');
+	}
 };

@@ -8,130 +8,132 @@ import Warnings from '../database/models/Warnings';
 import Statistics from '../database/models/Statistics';
 
 export const onUpdate = async (
-  bot: ExtendedClient,
-  oldMessage: Message | PartialMessage,
-  newMessage: Message | PartialMessage,
+	bot: ExtendedClient,
+	oldMessage: Message | PartialMessage,
+	newMessage: Message | PartialMessage,
 ) => {
-  if (newMessage.partial) {
-    try {
-      newMessage = await newMessage.fetch();
-    } catch (error) {
-      return await errorHandler(bot, error, 'fetching partial message');
-    }
-  }
+	if (newMessage.partial) {
+		try {
+			newMessage = await newMessage.fetch();
+		} catch (error) {
+			return await errorHandler(bot, error, 'fetching partial message');
+		}
+	}
 
-  if (newMessage.author.bot || !newMessage.content || !newMessage.guild) {
-    return;
-  }
-  const channel = newMessage.channel;
-  if (!channel || !('send' in channel) || !('messages' in channel)) {
-    return;
-  }
-  const isAlwaysFilteredUser =
-    bot.config.filterUserId &&
-    newMessage.author.id === bot.config.filterUserId;
-  if (
-    !isAlwaysFilteredUser &&
-    bot.config.filterChannelId &&
-    channel.id !== bot.config.filterChannelId
-  ) {
-    return;
-  }
+	if (newMessage.author.bot || !newMessage.content || !newMessage.guild) {
+		return;
+	}
+	const channel = newMessage.channel;
+	if (!channel || !('send' in channel) || !('messages' in channel)) {
+		return;
+	}
+	const isAlwaysFilteredUser =
+		bot.config.filterUserId &&
+		newMessage.author.id === bot.config.filterUserId;
+	if (
+		!isAlwaysFilteredUser &&
+		bot.config.filterChannelId &&
+		channel.id !== bot.config.filterChannelId
+	) {
+		return;
+	}
 
-  try {
-    const triggeredWarnings: EmbedBuilder[] = [];
-    const cleaned = stripSpecialCharacters(newMessage.content);
-    triggeredWarnings.push(
-      ...(await checkContent(bot, cleaned, newMessage.guild.id)),
-    );
-    triggeredWarnings.push(
-      ...(await checkBannedWords(bot, cleaned, newMessage.guild.id)),
-    );
+	try {
+		const triggeredWarnings: EmbedBuilder[] = [];
+		const cleaned = stripSpecialCharacters(newMessage.content);
+		triggeredWarnings.push(
+			...(await checkContent(bot, cleaned, newMessage.guild.id)),
+		);
+		triggeredWarnings.push(
+			...(await checkBannedWords(bot, cleaned, newMessage.guild.id)),
+		);
 
-    triggeredWarnings.map((warning) =>
-      warning
-        .setColor('#2B2D31')
-        .setDescription(
-          `Thats bad. Please be mindful in <#${newMessage.channel.id}> and be more respectful.`,
-        )
-        .addFields([
-          {
-            name: 'TIP: ',
-            value:
-              'please edit or delete the above word(s) in your message then i will leave',
-          },
-        ]),
-    );
+		if (triggeredWarnings.length > 0) {
+			for (const warning of triggeredWarnings) {
+				warning
+					.setColor('#2B2D31')
+					.setDescription(
+						`That's bad. Please be mindful in <#${newMessage.channel.id}> and be more respectful.`,
+					)
+					.addFields([
+						{
+							name: 'TIP: ',
+							value:
+								'please edit or delete the above word(s) in your message then i will leave',
+						},
+					]);
+			}
+		}
 
-    const savedWarning = await Warnings.findOne({
-      serverId: newMessage.guild.id,
-      messageId: newMessage.id,
-      channelId: channel.id,
-    });
+		const savedWarning = await Warnings.findOne({
+			serverId: newMessage.guild.id,
+			messageId: newMessage.id,
+			channelId: channel.id,
+		});
 
-    // when edit results in new warning, but no existing warning
-    if (!savedWarning && triggeredWarnings.length) {
-      const sent = await channel.send({
-        embeds: triggeredWarnings.slice(0, 1),
-      });
-      await Warnings.create({
-        serverId: newMessage.guild.id,
-        messageId: newMessage.id,
-        channelId: channel.id,
-        warningId: sent.id,
-      });
+		// when edit results in new warning, but no existing warning
+		if (!savedWarning && triggeredWarnings.length) {
+			const sent = await channel.send({
+				embeds: triggeredWarnings.slice(0, 1),
+			});
+			await Warnings.create({
+				serverId: newMessage.guild.id,
+				messageId: newMessage.id,
+				channelId: channel.id,
+				warningId: sent.id,
+			});
 
-      await Statistics.findOneAndUpdate(
-        {
-          serverId: newMessage.guild.id,
-        },
-        { $inc: { totalTriggers: 1 } },
-        { upsert: true },
-      ).exec();
-    }
+			await Statistics.findOneAndUpdate(
+				{
+					serverId: newMessage.guild.id,
+				},
+				{ $inc: { totalTriggers: 1 } },
+				{ upsert: true },
+			).exec();
+		}
 
-    // when edit results in no new warning, but has existing warning, so fixed
-    if (savedWarning && !triggeredWarnings.length) {
-      const notificationMessage = await channel.messages.fetch(
-        savedWarning.warningId,
-      );
-      if (notificationMessage) {
-        await notificationMessage.delete();
-      }
-      await savedWarning.remove();
+		// when edit results in no new warning, but has existing warning, so fixed
+		if (savedWarning && !triggeredWarnings.length) {
+			const notificationMessage = await channel.messages.fetch(
+				savedWarning.warningId,
+			);
+			if (notificationMessage) {
+				await notificationMessage.delete();
+			}
+			await savedWarning.remove();
 
-      await Statistics.findOneAndUpdate(
-        {
-          serverId: newMessage.guild.id,
-        },
-        { $inc: { totalTriggersFixed: 1 } },
-        { upsert: true },
-      ).exec();
-      return;
-    }
+			await Statistics.findOneAndUpdate(
+				{
+					serverId: newMessage.guild.id,
+				},
+				{ $inc: { totalTriggersFixed: 1 } },
+				{ upsert: true },
+			).exec();
+			return;
+		}
 
-    // when edit results in new warning AND has existing warning
-    if (savedWarning && triggeredWarnings.length) {
-      const notificationMessage = await channel.messages.fetch(
-        savedWarning.warningId,
-      );
-      if (notificationMessage) {
-        await notificationMessage.edit({ embeds: [triggeredWarnings[0]] });
-        return;
-      }
+		// when edit results in new warning AND has existing warning
+		if (savedWarning && triggeredWarnings.length) {
+			const notificationMessage = await channel.messages.fetch(
+				savedWarning.warningId,
+			);
+			if (notificationMessage) {
+				await notificationMessage.edit({ embeds: [triggeredWarnings[0]] });
+				return;
+			}
 
-      await Statistics.findOneAndUpdate(
-        {
-          serverId: newMessage.guild.id,
-        },
-        { $inc: { totalTriggers: 1 } },
-        { upsert: true },
-      ).exec();
-    }
+			await Statistics.findOneAndUpdate(
+				{
+					serverId: newMessage.guild.id,
+				},
+				{ $inc: { totalTriggers: 1 } },
+				{ upsert: true },
+			).exec();
+		}
 
-    // when edit results in no new and no old
-    return;
-  } catch (error) {
-    await errorHandler(bot, error, 'on message');
-  }
+		// when edit results in no new and no old
+		return;
+	} catch (error) {
+		await errorHandler(bot, error, 'on message');
+	}
 };

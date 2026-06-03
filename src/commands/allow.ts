@@ -5,6 +5,8 @@ import {
 	SlashCommandSubcommandBuilder,
 } from "discord.js";
 import { Command } from "../interfaces/Command";
+import ServerConfig from "../database/models/ServerConfig";
+import { ExtendedClient } from "../interfaces/ExtendedClient";
 
 interface AlexConfig {
 	allow: Array<string>;
@@ -81,45 +83,17 @@ export const allow: Command = {
 	},
 };
 
-import ServerConfig from "../database/models/ServerConfig";
-import { ExtendedClient } from "../interfaces/ExtendedClient";
-
-async function deleteWord(
-	bot: ExtendedClient,
-	interaction: CommandInteraction,
-	wordToDelete: string
-) {
-	const guildId = interaction.guildId as string;
-	const guildQuery = await getOrCreateServerConfig(guildId);
-
-	const words = guildQuery.alexConfig?.allow ?? [];
-
-	const index = words!.indexOf(wordToDelete);
-	if (index !== -1) {
-		const updated = await ServerConfig.findOneAndUpdate(
-			{
-				serverId: guildId,
-			},
-			{
-				$pull: { "alexConfig.allow": wordToDelete },
-			},
-			{ new: true }
-		);
-		if (!updated) {
-			return "Could not update allow list. Please try again.";
-		}
-
-		const cache = bot.cache[guildId];
-		bot.cache[guildId] = {
-			alexConfig: updated!.alexConfig as AlexConfig,
-			bannedWordConfig:
-				cache?.bannedWordConfig ?? (guildQuery.bannedWordConfig as Array<string>) ?? [],
-		};
-
-		return `Successfully deleted the word "${wordToDelete}" from the allow list.`;
-	} else {
-		return `The word "${wordToDelete}" does not exist in the allow list.`;
+async function getOrCreateServerConfig(serverId: string) {
+	const existing = await ServerConfig.findOne({ serverId });
+	if (existing) {
+		return existing;
 	}
+
+	return ServerConfig.create({
+		serverId,
+		alexConfig: createDefaultAlexConfig(),
+		bannedWordConfig: [],
+	});
 }
 
 async function addWord(
@@ -159,15 +133,40 @@ async function addWord(
 	}
 }
 
-async function getOrCreateServerConfig(serverId: string) {
-	const existing = await ServerConfig.findOne({ serverId });
-	if (existing) {
-		return existing;
-	}
+async function deleteWord(
+	bot: ExtendedClient,
+	interaction: CommandInteraction,
+	wordToDelete: string
+) {
+	const guildId = interaction.guildId as string;
+	const guildQuery = await getOrCreateServerConfig(guildId);
 
-	return ServerConfig.create({
-		serverId,
-		alexConfig: createDefaultAlexConfig(),
-		bannedWordConfig: [],
-	});
+	const words = guildQuery.alexConfig?.allow ?? [];
+
+	const index = words!.indexOf(wordToDelete);
+	if (index !== -1) {
+		const updated = await ServerConfig.findOneAndUpdate(
+			{
+				serverId: guildId,
+			},
+			{
+				$pull: { "alexConfig.allow": wordToDelete },
+			},
+			{ new: true }
+		);
+		if (!updated) {
+			return "Could not update allow list. Please try again.";
+		}
+
+		const cache = bot.cache[guildId];
+		bot.cache[guildId] = {
+			alexConfig: updated!.alexConfig as AlexConfig,
+			bannedWordConfig:
+				cache?.bannedWordConfig ?? (guildQuery.bannedWordConfig as Array<string>) ?? [],
+		};
+
+		return `Successfully deleted the word "${wordToDelete}" from the allow list.`;
+	} else {
+		return `The word "${wordToDelete}" does not exist in the allow list.`;
+	}
 }

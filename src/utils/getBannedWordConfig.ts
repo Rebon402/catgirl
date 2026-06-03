@@ -7,10 +7,15 @@ interface AlexConfig {
 	noBinary: boolean;
 }
 
+interface ServerCache {
+	alexConfig: AlexConfig;
+	bannedWordConfig: Array<string>;
+}
+
 export const getBannedWordConfig = async (
 	bot: ExtendedClient,
 	serverId: string
-) => {
+): Promise<ServerCache> => {
 	if (bot.cache[serverId]) {
 		return bot.cache[serverId];
 	}
@@ -18,11 +23,12 @@ export const getBannedWordConfig = async (
 	const config = await ServerConfig.findOne({ serverId });
 
 	if (config) {
-		bot.cache[serverId] = {
+		const cache: ServerCache = {
 			alexConfig: config.alexConfig as AlexConfig,
 			bannedWordConfig: config.bannedWordConfig!,
 		};
-		return { bannedWordConfig: config.bannedWordConfig };
+		bot.cache[serverId] = cache;
+		return cache;
 	}
 
 	const newConfig = await ServerConfig.create({
@@ -35,9 +41,10 @@ export const getBannedWordConfig = async (
 		bannedWordConfig: [],
 	});
 
-	bot.cache[serverId] = {
+	const cache: ServerCache = {
 		alexConfig: newConfig.alexConfig as AlexConfig,
 		bannedWordConfig: newConfig.bannedWordConfig!,
 	};
-	return { bannedWordConfig: newConfig.bannedWordConfig };
+	bot.cache[serverId] = cache;
+	return cache;
 };

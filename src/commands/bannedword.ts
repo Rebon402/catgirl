@@ -5,6 +5,8 @@ import {
 	SlashCommandSubcommandBuilder,
 } from "discord.js";
 import { Command } from "../interfaces/Command";
+import ServerConfig from "../database/models/ServerConfig";
+import { ExtendedClient } from "../interfaces/ExtendedClient";
 
 interface AlexConfig {
 	allow: Array<string>;
@@ -92,39 +94,56 @@ export const bannedword: Command = {
 	},
 };
 
-import ServerConfig from "../database/models/ServerConfig";
-import { ExtendedClient } from "../interfaces/ExtendedClient";
+async function getOrCreateServerConfig(serverId: string) {
+	const existing = await ServerConfig.findOne({ serverId });
+	if (existing) {
+		return existing;
+	}
 
-async function clearWords(
+	return ServerConfig.create({
+		serverId,
+		alexConfig: createDefaultAlexConfig(),
+		bannedWordConfig: [],
+	});
+}
+
+async function addWord(
 	bot: ExtendedClient,
-	interaction: CommandInteraction
+	interaction: CommandInteraction,
+	wordToAdd: string
 ) {
 	const guildId = interaction.guildId as string;
 	const guildQuery = await getOrCreateServerConfig(guildId);
 
-	const updated = await ServerConfig.findOneAndUpdate(
-		{
-			serverId: guildId,
-		},
-		{
-			$set: { bannedWordConfig: [] },
-		},
-		{ new: true }
-	);
-	if (!updated) {
-		return "Could not update banned list. Please try again.";
+	const words = guildQuery.bannedWordConfig as Array<string>;
+
+	if (!words!.includes(wordToAdd)) {
+		const updated = await ServerConfig.findOneAndUpdate(
+			{
+				serverId: guildId,
+			},
+			{
+				$push: { bannedWordConfig: wordToAdd },
+			},
+			{ new: true }
+		);
+		if (!updated) {
+			return "Could not update banned list. Please try again.";
+		}
+
+		const cache = bot.cache[guildId];
+		bot.cache[guildId] = {
+			alexConfig:
+				(cache?.alexConfig as AlexConfig) ??
+				(guildQuery.alexConfig as AlexConfig) ??
+				createDefaultAlexConfig(),
+			bannedWordConfig: updated!.bannedWordConfig!,
+		};
+
+		return `Successfully added the word "${wordToAdd}" to the banned list.`;
+	} else {
+		return `The word "${wordToAdd}" already exists in the banned list.`;
 	}
-
-	const cache = bot.cache[guildId];
-	bot.cache[guildId] = {
-		alexConfig:
-			(cache?.alexConfig as AlexConfig) ??
-			(guildQuery.alexConfig as AlexConfig) ??
-			createDefaultAlexConfig(),
-		bannedWordConfig: updated!.bannedWordConfig!,
-	};
-
-	return `Successfully deleted the all words in the banned list.`;
 }
 
 async function deleteWord(
@@ -167,54 +186,34 @@ async function deleteWord(
 	}
 }
 
-async function addWord(
+async function clearWords(
 	bot: ExtendedClient,
-	interaction: CommandInteraction,
-	wordToAdd: string
+	interaction: CommandInteraction
 ) {
 	const guildId = interaction.guildId as string;
 	const guildQuery = await getOrCreateServerConfig(guildId);
 
-	const words = guildQuery.bannedWordConfig as Array<string>;
-
-	if (!words!.includes(wordToAdd)) {
-		const updated = await ServerConfig.findOneAndUpdate(
-			{
-				serverId: guildId,
-			},
-			{
-				$push: { bannedWordConfig: wordToAdd },
-			},
-			{ new: true }
-		);
-		if (!updated) {
-			return "Could not update banned list. Please try again.";
-		}
-
-		const cache = bot.cache[guildId];
-		bot.cache[guildId] = {
-			alexConfig:
-				(cache?.alexConfig as AlexConfig) ??
-				(guildQuery.alexConfig as AlexConfig) ??
-				createDefaultAlexConfig(),
-			bannedWordConfig: updated!.bannedWordConfig!,
-		};
-
-		return `Successfully added the word "${wordToAdd}" to the banned list.`;
-	} else {
-		return `The word "${wordToAdd}" already exists in the banned list.`;
-	}
-}
-
-async function getOrCreateServerConfig(serverId: string) {
-	const existing = await ServerConfig.findOne({ serverId });
-	if (existing) {
-		return existing;
+	const updated = await ServerConfig.findOneAndUpdate(
+		{
+			serverId: guildId,
+		},
+		{
+			$set: { bannedWordConfig: [] },
+		},
+		{ new: true }
+	);
+	if (!updated) {
+		return "Could not update banned list. Please try again.";
 	}
 
-	return ServerConfig.create({
-		serverId,
-		alexConfig: createDefaultAlexConfig(),
-		bannedWordConfig: [],
-	});
+	const cache = bot.cache[guildId];
+	bot.cache[guildId] = {
+		alexConfig:
+			(cache?.alexConfig as AlexConfig) ??
+			(guildQuery.alexConfig as AlexConfig) ??
+			createDefaultAlexConfig(),
+		bannedWordConfig: updated!.bannedWordConfig!,
+	};
+
+	return `Successfully deleted the all words in the banned list.`;
 }
