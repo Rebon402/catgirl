@@ -25,41 +25,29 @@ export const checkContent = async (
 			profanitySureness,
 			noBinary,
 		}).messages;
-		let embeds: EmbedBuilder[] = [];
 
-		let embed = new EmbedBuilder();
-		embed.setTitle("Hold up!");
-		embed.setDescription("That's bad");
-		embed.setColor("#2B2D31");
+		if (rawResult.length === 0) {
+			return [];
+		}
 
-		const uniqueMessages = new Set();
+		const uniqueMessages = new Set<string>();
+		const embed = new EmbedBuilder()
+			.setTitle("Hold up!")
+			.setDescription("That's bad")
+			.setColor("#2B2D31");
 
 		for (const message of rawResult) {
-			if (
-				message.actual &&
-				!uniqueMessages.has((message.actual as string).toLowerCase())
-			) {
-				uniqueMessages.add((message.actual as string).toLowerCase());
-				let response;
-				if (!message.note) {
-					response = "see above.";
-				} else {
-					response = message.note;
-				}
+			const actual = message.actual as string;
+			if (actual && !uniqueMessages.has(actual.toLowerCase())) {
+				uniqueMessages.add(actual.toLowerCase());
 				embed.addFields({
 					name: message.reason,
-					value: response,
+					value: message.note || "see above.",
 				});
 			}
 		}
 
-		if (!rawResult.length) {
-			embeds = [];
-		} else {
-			embeds.push(embed);
-		}
-
-		return embeds;
+		return [embed];
 	} catch (error) {
 		await errorHandler(bot, error, "alexjs check content");
 		return [];

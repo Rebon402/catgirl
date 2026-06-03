@@ -31,42 +31,41 @@ export const onMessage = async (bot: ExtendedClient, message: Message) => {
       ...(await checkBannedWords(bot, cleaned, message.guild.id)),
     );
 
-    triggeredWarnings.map((warning) =>
-      warning
-        .setColor('#2B2D31')
-        .setDescription(
-          `Thats bad. Please be mindful in <#${message.channel.id}> and be more respectful.`,
-        )
-        .addFields([
-          {
-            name: 'TIP: ',
-            value:
-              'please edit or delete the above word(s) in your message then i will leave',
-          },
-        ]),
-    );
+    if (triggeredWarnings.length > 0) {
+			for (const warning of triggeredWarnings) {
+				warning
+					.setColor('#2B2D31')
+					.setDescription(
+						`That's bad. Please be mindful in <#${message.channel.id}> and be more respectful.`,
+					)
+					.addFields([
+						{
+							name: 'TIP: ',
+							value:
+								'please edit or delete the above word(s) in your message then i will leave',
+						},
+					]);
+			}
 
-    if (!triggeredWarnings.length) {
-      return;
-    }
+			const sent = await message.reply({
+				embeds: triggeredWarnings.slice(0, 1),
+			});
 
-    const sent = await message.reply({
-      embeds: triggeredWarnings.slice(0, 1),
-    });
-    await Warnings.create({
-      serverId: message.guild.id,
-      messageId: message.id,
-      channelId: message.channel.id,
-      warningId: sent.id,
-    });
+			await Warnings.create({
+				serverId: message.guild.id,
+				messageId: message.id,
+				channelId: message.channel.id,
+				warningId: sent.id,
+			});
 
-    await Statistics.findOneAndUpdate(
-      {
-        serverId: message.guild.id,
-      },
-      { $inc: { totalTriggers: 1 } },
-      { upsert: true },
-    ).exec();
+			await Statistics.findOneAndUpdate(
+				{
+					serverId: message.guild.id,
+				},
+				{ $inc: { totalTriggers: 1 } },
+				{ upsert: true },
+			).exec();
+		}
   } catch (error) {
     await errorHandler(bot, error, 'on message');
   }
